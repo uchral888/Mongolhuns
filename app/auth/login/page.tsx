@@ -35,13 +35,13 @@ export default function LoginPage() {
         return;
       }
 
-      // Get session to check user role
+      // Check session for user role
       const session = await getSession();
       const userRole = (session?.user as any)?.role;
 
       toast.success('Welcome back!');
-      
-      // Redirect based on role
+
+      // Redirect by role
       if (userRole === 'admin') {
         router.push('/admin/dashboard');
       } else {
@@ -82,7 +82,7 @@ export default function LoginPage() {
                 disabled={isLoading}
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <div className="relative">
@@ -117,7 +117,7 @@ export default function LoginPage() {
 
           <div className="text-center space-y-4">
             <p className="text-sm text-muted-foreground">
-              Don't have an account?{' '}
+              Don&apos;t have an account?{' '}
               <Link href="/auth/register" className="text-primary hover:underline">
                 Sign up
               </Link>
