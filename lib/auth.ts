@@ -2,10 +2,30 @@ import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcryptjs';
+import { JWT } from 'next-auth/jwt';
+import { Session } from 'next-auth';
+
+// Custom type definitions
+interface CustomUser {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  image?: string;
+}
+
+interface ExtendedSession extends Session {
+  user: CustomUser;
+}
+
+// Environment variable validation
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error('Missing required environment variables for Supabase');
+}
 
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 export const authOptions: NextAuthOptions = {
@@ -16,13 +36,12 @@ export const authOptions: NextAuthOptions = {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
       },
-      async authorize(credentials) {
+      async authorize(credentials): Promise<CustomUser | null> {
         if (!credentials?.email || !credentials?.password) {
-          return null;
+          throw new Error('Missing credentials');
         }
 
         try {
-          // Get user from database
           const { data: user, error } = await supabase
             .from('users')
             .select('*')
@@ -30,14 +49,16 @@ export const authOptions: NextAuthOptions = {
             .single();
 
           if (error || !user) {
-            return null;
+            throw new Error('User not found');
           }
 
-          // Verify password
-          const isValidPassword = await bcrypt.compare(credentials.password, user.password);
-          
+          const isValidPassword = await bcrypt.compare(
+            credentials.password,
+            user.password
+          );
+
           if (!isValidPassword) {
-            return null;
+            throw new Error('Invalid password');
           }
 
           return {
@@ -48,32 +69,39 @@ export const authOptions: NextAuthOptions = {
             image: user.avatar_url,
           };
         } catch (error) {
-          console.error('Auth error:', error);
-          return null;
+          console.error('Authentication error:', error);
+          throw error;
         }
       },
     }),
   ],
   pages: {
     signIn: '/auth/login',
-    signUp: '/auth/register',
   },
   session: {
     strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.role = (user as any).role;
+        return {
+          ...token,
+          role: (user as CustomUser).role,
+        };
       }
       return token;
     },
-    async session({ session, token }) {
-      if (session.user) {
-        (session.user as any).id = token.sub;
-        (session.user as any).role = token.role;
-      }
-      return session;
+    async session({ session, token }): Promise<ExtendedSession> {
+      return {
+        ...session,
+        user: {
+          ...session.user,
+          id: token.sub!,
+          role: token.role as string,
+        } as CustomUser,
+      };
     },
   },
+  secret: process.env.NEXTAUTH_SECRET,
 };
